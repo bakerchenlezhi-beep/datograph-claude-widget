@@ -21,6 +21,8 @@ struct SettingsView: View {
 struct GeneralSettings: View {
     @Environment(Clock.self) private var clock
     @AppStorage(Pref.menuBarPattern) private var pattern = MenuBarFormat.defaultPattern
+    @AppStorage(Pref.menuBarIcon) private var icon = MenuBarIcon.none
+    @AppStorage(Pref.showNextEvent) private var showNextEvent = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -34,12 +36,17 @@ struct GeneralSettings: View {
                     Text("Custom").tag("")
                 }
                 TextField("Format", text: $pattern)
-                LabeledContent("Preview") {
-                    if pattern.trimmingCharacters(in: .whitespaces).isEmpty {
-                        Image(systemName: "calendar")
-                    } else {
-                        Text(MenuBarFormat.string(from: clock.now, pattern: pattern))
+                Picker("Icon", selection: $icon) {
+                    ForEach(MenuBarIcon.allCases, id: \.self) { icon in
+                        Text(icon.name).tag(icon)
                     }
+                }
+                LabeledContent("Preview") {
+                    MenuBarLabel(clock: clock, pattern: pattern, icon: icon)
+                }
+                Toggle(isOn: $showNextEvent) {
+                    Text("Show next event")
+                    Text("A separate menu bar item for the next event starting within 12 hours.")
                 }
             } header: {
                 Text("Menu Bar")
@@ -80,6 +87,7 @@ struct CalendarSettings: View {
     @Environment(CalendarStore.self) private var store
     @AppStorage(Pref.firstWeekday) private var firstWeekday = 0
     @AppStorage(Pref.showWeekNumbers) private var showWeekNumbers = false
+    @AppStorage(Pref.highlightWeekends) private var highlightWeekends = true
     @AppStorage(Pref.upcomingDays) private var upcomingDays = 7
     @AppStorage(Pref.hiddenCalendarIDs) private var hiddenCalendarIDs = ""
 
@@ -94,6 +102,7 @@ struct CalendarSettings: View {
                     }
                 }
                 Toggle("Show week numbers", isOn: $showWeekNumbers)
+                Toggle("Highlight weekends", isOn: $highlightWeekends)
                 Picker("Show events for", selection: $upcomingDays) {
                     ForEach([1, 3, 7, 14], id: \.self) { days in
                         Text(days == 1 ? "1 day" : "\(days) days").tag(days)

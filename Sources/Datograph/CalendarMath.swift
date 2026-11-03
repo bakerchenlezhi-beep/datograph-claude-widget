@@ -3,6 +3,9 @@ import Foundation
 /// UserDefaults keys. List values are stored comma-separated.
 enum Pref {
     static let menuBarPattern = "menuBarPattern"
+    static let menuBarIcon = "menuBarIcon"
+    static let showNextEvent = "showNextEvent"
+    static let highlightWeekends = "highlightWeekends"
     /// 0 = system default, 1 = Sunday … 7 = Saturday.
     static let firstWeekday = "firstWeekday"
     static let showWeekNumbers = "showWeekNumbers"
@@ -35,6 +38,42 @@ enum CalendarMath {
         let symbols = calendar.veryShortStandaloneWeekdaySymbols
         let first = calendar.firstWeekday - 1
         return Array(symbols[first...] + symbols[..<first])
+    }
+
+    /// Parses typed dates such as "24 Dec", "next friday" or "2027-01-05".
+    static func parseDate(_ text: String) -> Date? {
+        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue)
+        return detector?.firstMatch(in: text, range: NSRange(text.startIndex..., in: text))?.date
+    }
+
+    /// The whole days between two dates, with a breakdown when it's longer than a month: "51 days (1 month, 20 days)".
+    static func differenceText(from start: Date, to end: Date, calendar: Calendar) -> String {
+        let earlier = calendar.startOfDay(for: min(start, end))
+        let later = calendar.startOfDay(for: max(start, end))
+        let formatter = DateComponentsFormatter()
+        formatter.calendar = calendar
+        formatter.unitsStyle = .full
+        formatter.allowedUnits = [.day]
+        let days = formatter.string(from: calendar.dateComponents([.day], from: earlier, to: later)) ?? ""
+        formatter.allowedUnits = [.year, .month, .day]
+        let breakdown = formatter.string(from: calendar.dateComponents([.year, .month, .day], from: earlier, to: later)) ?? ""
+        return breakdown == days ? days : "\(days) (\(breakdown))"
+    }
+}
+
+enum NextEvent {
+    /// How far ahead the menu bar looks for the next event.
+    static let horizon: TimeInterval = 12 * 3600
+
+    /// "Standup in 12 min", "Standup in 1 h 40 min", "Standup · now"
+    static func text(title: String, start: Date, now: Date) -> String {
+        let name = title.count > 24 ? String(title.prefix(23)) + "…" : title
+        let minutes = Int((start.timeIntervalSince(now) / 60).rounded(.up))
+        if minutes <= 0 { return "\(name) · now" }
+        if minutes < 60 { return "\(name) in \(minutes) min" }
+        let hours = minutes / 60
+        let rest = minutes % 60
+        return rest == 0 ? "\(name) in \(hours) h" : "\(name) in \(hours) h \(rest) min"
     }
 }
 

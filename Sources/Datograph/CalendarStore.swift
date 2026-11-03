@@ -41,7 +41,7 @@ final class CalendarStore {
         _ = revision
         let first = calendar.startOfDay(for: start)
         let boundaries = (0...days).compactMap { calendar.date(byAdding: .day, value: $0, to: first) }
-        let visible = calendars.filter { !hiddenCalendarIDs.contains($0.calendarIdentifier) }
+        let visible = visibleCalendars(hiddenCalendarIDs)
 
         var events: [EKEvent] = []
         if hasAccess, !visible.isEmpty, let end = boundaries.last {
@@ -56,5 +56,20 @@ final class CalendarStore {
                 $0.startDate < dayEnd && ($0.endDate > dayStart || $0.startDate >= dayStart)
             })
         }
+    }
+
+    /// The earliest-starting timed event that hasn't ended yet, if one starts within `NextEvent.horizon`.
+    func nextEvent(at now: Date, hiddenCalendarIDs: Set<String>) -> EKEvent? {
+        _ = revision
+        let visible = visibleCalendars(hiddenCalendarIDs)
+        guard hasAccess, !visible.isEmpty else { return nil }
+        let predicate = store.predicateForEvents(withStart: now, end: now + NextEvent.horizon, calendars: visible)
+        return store.events(matching: predicate)
+            .filter { !$0.isAllDay && $0.endDate > now }
+            .min { $0.startDate < $1.startDate }
+    }
+
+    private func visibleCalendars(_ hiddenCalendarIDs: Set<String>) -> [EKCalendar] {
+        calendars.filter { !hiddenCalendarIDs.contains($0.calendarIdentifier) }
     }
 }

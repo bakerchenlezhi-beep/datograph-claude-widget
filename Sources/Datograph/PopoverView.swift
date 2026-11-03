@@ -5,6 +5,7 @@ struct PopoverView: View {
     @Environment(Clock.self) private var clock
     @AppStorage(Pref.firstWeekday) private var firstWeekday = 0
     @AppStorage(Pref.showWeekNumbers) private var showWeekNumbers = false
+    @AppStorage(Pref.highlightWeekends) private var highlightWeekends = true
     @AppStorage(Pref.upcomingDays) private var upcomingDays = 7
     @AppStorage(Pref.hiddenCalendarIDs) private var hiddenCalendarIDs = ""
     @AppStorage(Pref.worldClocks) private var worldClocks = ""
@@ -12,9 +13,11 @@ struct PopoverView: View {
     @State private var displayedMonth = Date.now
     /// `nil` means today, so the selection follows the date across midnight.
     @State private var selectedDay: Date?
+    @State private var showDateTools = false
+
+    private var calendar: Calendar { CalendarMath.calendar(firstWeekday: firstWeekday) }
 
     var body: some View {
-        let calendar = CalendarMath.calendar(firstWeekday: firstWeekday)
         let hidden = Set(hiddenCalendarIDs.listItems)
         let zones = worldClocks.listItems
 
@@ -22,14 +25,20 @@ struct PopoverView: View {
             MonthView(
                 displayedMonth: $displayedMonth,
                 selectedDay: $selectedDay,
+                showDateTools: $showDateTools,
                 calendar: calendar,
                 showWeekNumbers: showWeekNumbers,
+                highlightWeekends: highlightWeekends,
                 hiddenCalendarIDs: hidden
             )
             .padding(12)
 
             Divider()
-            EventSection(start: selectedDay ?? clock.today, days: upcomingDays, calendar: calendar, hiddenCalendarIDs: hidden)
+            if showDateTools {
+                DateToolsView(calendar: calendar, goTo: goTo)
+            } else {
+                EventSection(start: selectedDay ?? clock.today, days: upcomingDays, calendar: calendar, hiddenCalendarIDs: hidden)
+            }
 
             if !zones.isEmpty {
                 Divider()
@@ -43,7 +52,14 @@ struct PopoverView: View {
         .onAppear {
             displayedMonth = .now
             selectedDay = nil
+            showDateTools = false
         }
+    }
+
+    private func goTo(_ date: Date) {
+        displayedMonth = date
+        selectedDay = calendar.isDate(date, inSameDayAs: clock.today) ? nil : calendar.startOfDay(for: date)
+        showDateTools = false
     }
 }
 
@@ -54,8 +70,10 @@ struct MonthView: View {
     @Environment(CalendarStore.self) private var store
     @Binding var displayedMonth: Date
     @Binding var selectedDay: Date?
+    @Binding var showDateTools: Bool
     let calendar: Calendar
     let showWeekNumbers: Bool
+    let highlightWeekends: Bool
     let hiddenCalendarIDs: Set<String>
 
     var body: some View {
@@ -65,14 +83,17 @@ struct MonthView: View {
         VStack(spacing: 8) {
             header
 
-            Grid(horizontalSpacing: 0, verticalSpacing: 2) {
+            // No vertical spacing, so weekend tints join into continuous columns.
+            Grid(horizontalSpacing: 0, verticalSpacing: 0) {
                 GridRow {
                     if showWeekNumbers { Color.clear.gridCellUnsizedAxes([.horizontal, .vertical]) }
-                    ForEach(Array(CalendarMath.weekdaySymbols(calendar: calendar).enumerated()), id: \.offset) { _, symbol in
+                    ForEach(Array(CalendarMath.weekdaySymbols(calendar: calendar).enumerated()), id: \.offset) { column, symbol in
                         Text(symbol)
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
+                            .padding(.vertical, 3)
+                            .background { if isWeekend(days[column]) { WeekendTint() } }
                     }
                 }
                 ForEach(0..<6, id: \.self) { week in
@@ -91,6 +112,7 @@ struct MonthView: View {
                                 isInMonth: calendar.isDate(day, equalTo: displayedMonth, toGranularity: .month),
                                 isToday: calendar.isDate(day, inSameDayAs: clock.today),
                                 isSelected: selectedDay.map { calendar.isDate(day, inSameDayAs: $0) } ?? false,
+                                isWeekend: isWeekend(day),
                                 dotColors: calendarColors(eventDays[index].events)
                             ) {
                                 select(day)
@@ -107,6 +129,9 @@ struct MonthView: View {
             Text(displayedMonth.formatted(.dateTime.month(.wide).year()))
                 .font(.headline)
             Spacer()
+            headerButton(showDateTools ? "plusminus.circle.fill" : "plusminus.circle", help: "Go to Date and Date Calculator") {
+                showDateTools.toggle()
+            }
             headerButton("chevron.left", help: "Previous Month") { shiftMonth(by: -1) }
             headerButton("circle.fill", help: "Today", size: 6) {
                 displayedMonth = clock.today
@@ -139,6 +164,11 @@ struct MonthView: View {
         }
     }
 
+    /// Weekend days follow the user's region (Saturday and Sunday in most places).
+    private func isWeekend(_ day: Date) -> Bool {
+        highlightWeekends && calendar.isDateInWeekend(day)
+    }
+
     /// Up to three distinct calendar colors, in the order their events occur.
     private func calendarColors(_ events: [EKEvent]) -> [Color] {
         var calendars: [EKCalendar] = []
@@ -154,6 +184,7 @@ struct DayCell: View {
     let isInMonth: Bool
     let isToday: Bool
     let isSelected: Bool
+    let isWeekend: Bool
     let dotColors: [Color]
     let action: () -> Void
 
@@ -181,7 +212,8 @@ struct DayCell: View {
                 .opacity(isInMonth ? 1 : 0.5)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 1)
+            .padding(.vertical, 2)
+            .background { if isWeekend { WeekendTint() } }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -190,6 +222,12 @@ struct DayCell: View {
     private var textStyle: AnyShapeStyle {
         if isToday { return AnyShapeStyle(.white) }
         return isInMonth ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary)
+    }
+}
+
+struct WeekendTint: View {
+    var body: some View {
+        Rectangle().fill(Color.primary.opacity(0.06))
     }
 }
 
@@ -267,21 +305,26 @@ struct EventRow: View {
     let event: EKEvent
 
     var body: some View {
-        HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(Color(cgColor: event.calendar.cgColor))
-                .frame(width: 3)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(event.title ?? "")
-                    .font(.callout)
-                    .lineLimit(1)
-                Text(timeText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        Button(action: openNotionCalendar) {
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color(cgColor: event.calendar.cgColor))
+                    .frame(width: 3)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(event.title ?? "")
+                        .font(.callout)
+                        .lineLimit(1)
+                    Text(timeText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .fixedSize(horizontal: false, vertical: true)
+            .contentShape(Rectangle())
         }
-        .fixedSize(horizontal: false, vertical: true)
+        .buttonStyle(.plain)
+        .help("Open Notion Calendar")
         .opacity(event.endDate < clock.now ? 0.45 : 1)
     }
 
@@ -310,6 +353,101 @@ struct CalendarAccessPrompt: View {
             }
         }
         .font(.callout)
+    }
+}
+
+// MARK: - Date tools
+
+struct DateToolsView: View {
+    let calendar: Calendar
+    let goTo: (Date) -> Void
+
+    private enum Mode { case between, add }
+
+    @State private var query = ""
+    @State private var mode = Mode.between
+    @State private var start = Date.now
+    @State private var end = Date.now
+    @State private var amount = 1
+    @State private var unit = Calendar.Component.day
+    @State private var subtracting = false
+
+    var body: some View {
+        let parsed = CalendarMath.parseDate(query)
+
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Go to Date").fontWeight(.semibold)
+            HStack {
+                TextField("24 Dec, next friday…", text: $query)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { if let parsed { goTo(parsed) } }
+                Button("Go") { if let parsed { goTo(parsed) } }
+                    .disabled(parsed == nil)
+            }
+            if !query.isEmpty {
+                Text(parsed?.formatted(date: .complete, time: .omitted) ?? "Not a date")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            Text("Date Calculator").fontWeight(.semibold)
+            Picker("Mode", selection: $mode) {
+                Text("Between Dates").tag(Mode.between)
+                Text("Add or Subtract").tag(Mode.add)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            switch mode {
+            case .between:
+                Grid(alignment: .leading, verticalSpacing: 8) {
+                    GridRow {
+                        Text("From")
+                        DatePicker("From", selection: $start, displayedComponents: .date).labelsHidden()
+                    }
+                    GridRow {
+                        Text("To")
+                        DatePicker("To", selection: $end, displayedComponents: .date).labelsHidden()
+                    }
+                }
+                Text(CalendarMath.differenceText(from: start, to: end, calendar: calendar))
+                    .fontWeight(.medium)
+            case .add:
+                DatePicker("Date", selection: $start, displayedComponents: .date)
+                HStack {
+                    Picker("Operation", selection: $subtracting) {
+                        Text("+").tag(false)
+                        Text("−").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                    TextField("Amount", value: $amount, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 56)
+                    Picker("Unit", selection: $unit) {
+                        Text("days").tag(Calendar.Component.day)
+                        Text("weeks").tag(Calendar.Component.weekOfYear)
+                        Text("months").tag(Calendar.Component.month)
+                        Text("years").tag(Calendar.Component.year)
+                    }
+                    .labelsHidden()
+                }
+                if let result = calendar.date(byAdding: unit, value: subtracting ? -amount : amount, to: start) {
+                    HStack {
+                        Text(result.formatted(date: .complete, time: .omitted))
+                            .fontWeight(.medium)
+                        Spacer()
+                        Button("Show") { goTo(result) }
+                    }
+                }
+            }
+        }
+        .font(.callout)
+        .datePickerStyle(.field)
+        .padding(12)
     }
 }
 
@@ -359,16 +497,20 @@ struct WorldClocksView: View {
 
 // MARK: - Footer
 
+/// Opens the Notion Calendar app. It can't jump to a specific event: its `cron://showEvent` link needs the
+/// account's email address, which macOS Calendar doesn't expose for iCloud, subscribed or birthday calendars.
+func openNotionCalendar() {
+    if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.cron.electron") {
+        NSWorkspace.shared.open(url)
+    }
+}
+
 struct FooterView: View {
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         HStack {
-            Button("Open Calendar") {
-                if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
-                    NSWorkspace.shared.open(url)
-                }
-            }
+            Button("Open Notion Calendar", action: openNotionCalendar)
             Spacer()
             Menu {
                 Button("Settings…") {
