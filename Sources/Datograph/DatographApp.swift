@@ -22,8 +22,9 @@ struct DatographApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        // Created after the clock, so macOS places it to the clock's left.
-        MenuBarExtra(isInserted: Binding(get: { hasNextEvent }, set: { showNextEvent = $0 })) {
+        // Created after the clock, so macOS places it to the clock's left. The binding is read-only on purpose:
+        // SwiftUI writes `false` back whenever the item is hidden, which would switch off the setting itself.
+        MenuBarExtra(isInserted: .constant(hasNextEvent)) {
             popover
         } label: {
             Text(nextEvent.map { NextEvent.text(title: $0.title ?? "", start: $0.startDate, now: clock.minute) } ?? "")

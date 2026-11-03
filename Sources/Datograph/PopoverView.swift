@@ -34,11 +34,16 @@ struct PopoverView: View {
             .padding(12)
 
             Divider()
-            if showDateTools {
-                DateToolsView(calendar: calendar, goTo: goTo)
-            } else {
-                EventSection(start: selectedDay ?? clock.today, days: upcomingDays, calendar: calendar, hiddenCalendarIDs: hidden)
+            // A constant height keeps the popover from changing size: the menu bar window grows to fit
+            // taller content but doesn't shrink back, which left gaps around shorter content.
+            Group {
+                if showDateTools {
+                    DateToolsView(calendar: calendar, goTo: goTo)
+                } else {
+                    EventSection(start: selectedDay ?? clock.today, days: upcomingDays, calendar: calendar, hiddenCalendarIDs: hidden)
+                }
             }
+            .frame(height: 320, alignment: .top)
 
             if !zones.isEmpty {
                 Divider()
@@ -86,7 +91,6 @@ struct MonthView: View {
             // No vertical spacing, so weekend tints join into continuous columns.
             Grid(horizontalSpacing: 0, verticalSpacing: 0) {
                 GridRow {
-                    if showWeekNumbers { Color.clear.gridCellUnsizedAxes([.horizontal, .vertical]) }
                     ForEach(Array(CalendarMath.weekdaySymbols(calendar: calendar).enumerated()), id: \.offset) { column, symbol in
                         Text(symbol)
                             .font(.caption2.weight(.medium))
@@ -98,13 +102,6 @@ struct MonthView: View {
                 }
                 ForEach(0..<6, id: \.self) { week in
                     GridRow {
-                        if showWeekNumbers {
-                            Text("\(calendar.component(.weekOfYear, from: days[week * 7]))")
-                                .font(.caption2)
-                                .monospacedDigit()
-                                .foregroundStyle(.tertiary)
-                                .frame(width: 22)
-                        }
                         ForEach(week * 7 ..< week * 7 + 7, id: \.self) { index in
                             let day = days[index]
                             DayCell(
@@ -117,11 +114,28 @@ struct MonthView: View {
                             ) {
                                 select(day)
                             }
+                            .overlay(alignment: .topLeading) {
+                                if showWeekNumbers && index == week * 7 {
+                                    weekNumber(for: day)
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    /// Drawn in the popover's 12pt side padding, left of each week's first day, so turning week numbers on
+    /// doesn't move the calendar. The frame and offset line it up with the day number in `DayCell`.
+    private func weekNumber(for day: Date) -> some View {
+        Text("\(calendar.component(.weekOfYear, from: day))")
+            .font(.caption2)
+            .monospacedDigit()
+            .foregroundStyle(.tertiary)
+            .frame(width: 20, height: 24)
+            .offset(x: -12, y: 2)
+            .allowsHitTesting(false)
     }
 
     private var header: some View {
@@ -239,7 +253,6 @@ struct EventSection: View {
     let days: Int
     let calendar: Calendar
     let hiddenCalendarIDs: Set<String>
-    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
         if store.hasAccess {
@@ -253,10 +266,9 @@ struct EventSection: View {
                         EventDayView(eventDay: eventDay, calendar: calendar)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
             }
-            .frame(height: min(contentHeight, 320))
             .scrollBounceBehavior(.basedOnSize)
         } else {
             CalendarAccessPrompt()
