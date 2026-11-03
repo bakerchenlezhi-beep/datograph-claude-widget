@@ -13,10 +13,11 @@ A menu bar calendar for macOS 14+, inspired by [Dato](https://sindresorhus.com/d
 ## Build
 
 ```sh
-./scripts/build-app.sh      # builds and ad-hoc signs build/Datograph.app
-open build/Datograph.app
+./scripts/build-app.sh      # builds and ad-hoc signs build.noindex/Datograph.app
+open build.noindex/Datograph.app
 swift test                  # runs the unit tests
+swift scripts/make-icon.swift  # redraws Resources/AppIcon.icns
 ```
 
 The app is ad-hoc signed, so macOS may ask for Calendar access again after a rebuild.
-To keep it, copy `build/Datograph.app` to `/Applications`.
+To keep it, copy `build.noindex/Datograph.app` to `/Applications`.
