@@ -1,0 +1,392 @@
+import EventKit
+import SwiftUI
+
+struct PopoverView: View {
+    @Environment(Clock.self) private var clock
+    @AppStorage(Pref.firstWeekday) private var firstWeekday = 0
+    @AppStorage(Pref.showWeekNumbers) private var showWeekNumbers = false
+    @AppStorage(Pref.upcomingDays) private var upcomingDays = 7
+    @AppStorage(Pref.hiddenCalendarIDs) private var hiddenCalendarIDs = ""
+    @AppStorage(Pref.worldClocks) private var worldClocks = ""
+
+    @State private var displayedMonth = Date.now
+    /// `nil` means today, so the selection follows the date across midnight.
+    @State private var selectedDay: Date?
+
+    var body: some View {
+        let calendar = CalendarMath.calendar(firstWeekday: firstWeekday)
+        let hidden = Set(hiddenCalendarIDs.listItems)
+        let zones = worldClocks.listItems
+
+        VStack(spacing: 0) {
+            MonthView(
+                displayedMonth: $displayedMonth,
+                selectedDay: $selectedDay,
+                calendar: calendar,
+                showWeekNumbers: showWeekNumbers,
+                hiddenCalendarIDs: hidden
+            )
+            .padding(12)
+
+            Divider()
+            EventSection(start: selectedDay ?? clock.today, days: upcomingDays, calendar: calendar, hiddenCalendarIDs: hidden)
+
+            if !zones.isEmpty {
+                Divider()
+                WorldClocksView(identifiers: zones)
+            }
+
+            Divider()
+            FooterView()
+        }
+        .frame(width: 300)
+        .onAppear {
+            displayedMonth = .now
+            selectedDay = nil
+        }
+    }
+}
+
+// MARK: - Month
+
+struct MonthView: View {
+    @Environment(Clock.self) private var clock
+    @Environment(CalendarStore.self) private var store
+    @Binding var displayedMonth: Date
+    @Binding var selectedDay: Date?
+    let calendar: Calendar
+    let showWeekNumbers: Bool
+    let hiddenCalendarIDs: Set<String>
+
+    var body: some View {
+        let days = CalendarMath.monthGrid(for: displayedMonth, calendar: calendar)
+        let eventDays = store.eventsByDay(from: days[0], days: days.count, calendar: calendar, hiddenCalendarIDs: hiddenCalendarIDs)
+
+        VStack(spacing: 8) {
+            header
+
+            Grid(horizontalSpacing: 0, verticalSpacing: 2) {
+                GridRow {
+                    if showWeekNumbers { Color.clear.gridCellUnsizedAxes([.horizontal, .vertical]) }
+                    ForEach(Array(CalendarMath.weekdaySymbols(calendar: calendar).enumerated()), id: \.offset) { _, symbol in
+                        Text(symbol)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                ForEach(0..<6, id: \.self) { week in
+                    GridRow {
+                        if showWeekNumbers {
+                            Text("\(calendar.component(.weekOfYear, from: days[week * 7]))")
+                                .font(.caption2)
+                                .monospacedDigit()
+                                .foregroundStyle(.tertiary)
+                                .frame(width: 22)
+                        }
+                        ForEach(week * 7 ..< week * 7 + 7, id: \.self) { index in
+                            let day = days[index]
+                            DayCell(
+                                day: day,
+                                isInMonth: calendar.isDate(day, equalTo: displayedMonth, toGranularity: .month),
+                                isToday: calendar.isDate(day, inSameDayAs: clock.today),
+                                isSelected: selectedDay.map { calendar.isDate(day, inSameDayAs: $0) } ?? false,
+                                dotColors: calendarColors(eventDays[index].events)
+                            ) {
+                                select(day)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 2) {
+            Text(displayedMonth.formatted(.dateTime.month(.wide).year()))
+                .font(.headline)
+            Spacer()
+            headerButton("chevron.left", help: "Previous Month") { shiftMonth(by: -1) }
+            headerButton("circle.fill", help: "Today", size: 6) {
+                displayedMonth = clock.today
+                selectedDay = nil
+            }
+            headerButton("chevron.right", help: "Next Month") { shiftMonth(by: 1) }
+        }
+    }
+
+    private func headerButton(_ symbol: String, help: String, size: CGFloat = 12, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: size, weight: .semibold))
+                .frame(width: 24, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .help(help)
+    }
+
+    private func shiftMonth(by months: Int) {
+        displayedMonth = calendar.date(byAdding: .month, value: months, to: displayedMonth) ?? displayedMonth
+    }
+
+    private func select(_ day: Date) {
+        selectedDay = calendar.isDate(day, inSameDayAs: clock.today) ? nil : day
+        if !calendar.isDate(day, equalTo: displayedMonth, toGranularity: .month) {
+            displayedMonth = day
+        }
+    }
+
+    /// Up to three distinct calendar colors, in the order their events occur.
+    private func calendarColors(_ events: [EKEvent]) -> [Color] {
+        var calendars: [EKCalendar] = []
+        for event in events where !calendars.contains(event.calendar) {
+            calendars.append(event.calendar)
+        }
+        return calendars.prefix(3).map { Color(cgColor: $0.cgColor) }
+    }
+}
+
+struct DayCell: View {
+    let day: Date
+    let isInMonth: Bool
+    let isToday: Bool
+    let isSelected: Bool
+    let dotColors: [Color]
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Text(day.formatted(.dateTime.day()))
+                    .font(.system(size: 12, weight: isToday ? .semibold : .regular))
+                    .monospacedDigit()
+                    .foregroundStyle(textStyle)
+                    .frame(width: 24, height: 24)
+                    .background {
+                        if isToday {
+                            Circle().fill(Color.accentColor)
+                        } else if isSelected {
+                            Circle().fill(.quaternary)
+                        }
+                    }
+                HStack(spacing: 2) {
+                    ForEach(dotColors.indices, id: \.self) { index in
+                        Circle().fill(dotColors[index]).frame(width: 4, height: 4)
+                    }
+                }
+                .frame(height: 4)
+                .opacity(isInMonth ? 1 : 0.5)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 1)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var textStyle: AnyShapeStyle {
+        if isToday { return AnyShapeStyle(.white) }
+        return isInMonth ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary)
+    }
+}
+
+// MARK: - Events
+
+struct EventSection: View {
+    @Environment(CalendarStore.self) private var store
+    let start: Date
+    let days: Int
+    let calendar: Calendar
+    let hiddenCalendarIDs: Set<String>
+    @State private var contentHeight: CGFloat = 0
+
+    var body: some View {
+        if store.hasAccess {
+            let eventDays = store.eventsByDay(from: start, days: days, calendar: calendar, hiddenCalendarIDs: hiddenCalendarIDs)
+            // Always show the first (selected) day, then only days that have events.
+            let shown = eventDays.prefix(1) + eventDays.dropFirst().filter { !$0.events.isEmpty }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(shown) { eventDay in
+                        EventDayView(eventDay: eventDay, calendar: calendar)
+                    }
+                }
+                .padding(12)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+            }
+            .frame(height: min(contentHeight, 320))
+            .scrollBounceBehavior(.basedOnSize)
+        } else {
+            CalendarAccessPrompt()
+                .padding(12)
+                .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+struct EventDayView: View {
+    let eventDay: EventDay
+    let calendar: Calendar
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(title).fontWeight(.semibold)
+                Text(eventDay.day.formatted(.dateTime.month(.abbreviated).day()))
+                    .foregroundStyle(.secondary)
+            }
+            .font(.subheadline)
+
+            if eventDay.events.isEmpty {
+                Text("No events")
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            } else {
+                ForEach(eventDay.events, id: \.calendarItemIdentifier) { event in
+                    EventRow(event: event)
+                }
+            }
+        }
+    }
+
+    private var title: String {
+        let day = eventDay.day
+        if calendar.isDateInToday(day) { return "Today" }
+        if calendar.isDateInTomorrow(day) { return "Tomorrow" }
+        if calendar.isDateInYesterday(day) { return "Yesterday" }
+        return day.formatted(.dateTime.weekday(.wide))
+    }
+}
+
+struct EventRow: View {
+    @Environment(Clock.self) private var clock
+    let event: EKEvent
+
+    var body: some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(Color(cgColor: event.calendar.cgColor))
+                .frame(width: 3)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(event.title ?? "")
+                    .font(.callout)
+                    .lineLimit(1)
+                Text(timeText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .opacity(event.endDate < clock.now ? 0.45 : 1)
+    }
+
+    private var timeText: String {
+        if event.isAllDay { return "All day" }
+        return (event.startDate..<max(event.startDate, event.endDate)).formatted(.interval.hour().minute())
+    }
+}
+
+struct CalendarAccessPrompt: View {
+    @Environment(CalendarStore.self) private var store
+
+    var body: some View {
+        VStack(spacing: 8) {
+            if store.status == .notDetermined {
+                Text("See your upcoming events here.")
+                    .foregroundStyle(.secondary)
+                Button("Allow Calendar Access") { store.requestAccess() }
+            } else {
+                Text("Datograph doesn’t have access to your calendars.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Open Privacy Settings") {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
+                }
+            }
+        }
+        .font(.callout)
+    }
+}
+
+// MARK: - World clocks
+
+struct WorldClocksView: View {
+    @Environment(Clock.self) private var clock
+    let identifiers: [String]
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ForEach(identifiers, id: \.self) { identifier in
+                if let zone = TimeZone(identifier: identifier) {
+                    row(zone)
+                }
+            }
+        }
+        .padding(12)
+    }
+
+    private func row(_ zone: TimeZone) -> some View {
+        let local = TimeZone.autoupdatingCurrent
+        let dayDifference = WorldClock.dayDifference(at: clock.now, in: zone, relativeTo: local)
+        var timeStyle = Date.FormatStyle(date: .omitted, time: .shortened)
+        timeStyle.timeZone = zone
+
+        return HStack(spacing: 6) {
+            Text(WorldClock.cityName(for: zone.identifier))
+                .lineLimit(1)
+            Spacer()
+            if dayDifference != 0 {
+                Text(dayDifference > 0 ? "Tomorrow" : "Yesterday")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text(clock.now.formatted(timeStyle))
+                .monospacedDigit()
+            Text(WorldClock.offsetText(seconds: zone.secondsFromGMT(for: clock.now) - local.secondsFromGMT(for: clock.now)))
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(width: 48, alignment: .trailing)
+        }
+        .font(.callout)
+    }
+}
+
+// MARK: - Footer
+
+struct FooterView: View {
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        HStack {
+            Button("Open Calendar") {
+                if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            Spacer()
+            Menu {
+                Button("Settings…") {
+                    NSApp.activate()
+                    openSettings()
+                }
+                Divider()
+                Button("Quit Datograph") { NSApp.terminate(nil) }
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+        .buttonStyle(.borderless)
+        .font(.callout)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+}
