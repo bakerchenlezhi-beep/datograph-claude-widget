@@ -101,3 +101,7 @@ The app bundle is built into `build.noindex/` because Spotlight skips folders en
 - The app is ad-hoc signed, so macOS may ask for Calendar access again after each rebuild. The copy in `/Applications` keeps its access until you replace it.
 - Clicking an event opens Notion Calendar but not the event itself. Notion Calendar's event links need the account's email address, which macOS Calendar doesn't expose for iCloud, subscribed or birthday calendars.
 - The next event item ignores all-day events.
+
+## License
+
+[MIT](LICENSE)
