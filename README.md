@@ -4,6 +4,10 @@ A menu bar calendar for macOS 14+, inspired by [Dato](https://sindresorhus.com/d
 
 Datograph puts the date and time in your menu bar. Click it for a month calendar, your upcoming events from macOS Calendar, world clocks, and a few date tools. It's a native SwiftUI app with no dependencies, and it makes no network requests.
 
+<p align="center">
+  <img src="docs/screenshot.jpg" width="600" alt="Datograph's menu bar items, showing the next event and the date, above its popover with a month calendar, upcoming events and world clocks">
+</p>
+
 ## Features
 
 - **Menu bar clock**: Shows the date and time in any [date format pattern](https://www.unicode.org/reports/tr35/tr35-dates.html#Date_Field_Symbol_Table), with an optional icon: the date in a calendar, the date with a border, or a clock.
@@ -95,6 +99,7 @@ The app bundle is built into `build.noindex/` because Spotlight skips folders en
 | `Tests/DatographTests/` | Unit tests for the date logic |
 | `Resources/` | `Info.plist` and the app icon |
 | `scripts/` | Build and icon scripts |
+| `docs/` | README screenshot |
 
 ## Known limitations
 
