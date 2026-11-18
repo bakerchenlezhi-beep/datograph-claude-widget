@@ -52,12 +52,16 @@ private func date(_ year: Int, _ month: Int, _ day: Int, hour: Int = 0) -> Date 
     let now = date(2026, 11, 3, hour: 10)
     #expect(NextEvent.text(title: "Standup", start: now + 12 * 60, now: now) == "Standup in 12 min")
     #expect(NextEvent.text(title: "Standup", start: now + 30, now: now) == "Standup in 1 min")
-    #expect(NextEvent.text(title: "Standup", start: now + 100 * 60, now: now) == "Standup in 1 h 40 min")
+    #expect(NextEvent.text(title: "Standup", start: now + 59 * 60, now: now) == "Standup in 59 min")
+    #expect(NextEvent.text(title: "Standup", start: now + 60 * 60, now: now) == "Standup in 1 h")
+    #expect(NextEvent.text(title: "Standup", start: now + 89 * 60, now: now) == "Standup in 1 h")
+    #expect(NextEvent.text(title: "Standup", start: now + 100 * 60, now: now) == "Standup in 2 h")
     #expect(NextEvent.text(title: "Standup", start: now + 2 * 3600, now: now) == "Standup in 2 h")
     #expect(NextEvent.text(title: "Standup", start: now, now: now) == "Standup · now")
     #expect(NextEvent.text(title: "Standup", start: now - 600, now: now) == "Standup · now")
+    #expect(NextEvent.text(title: "Quarterly review", start: now - 1, now: now) == "Quarterly review · now")
     #expect(NextEvent.text(title: "Quarterly planning with the whole team", start: now - 1, now: now)
-        == "Quarterly planning with… · now")
+        == "Quarterly plann… · now")
 }
 
 @Test func parseDate() throws {

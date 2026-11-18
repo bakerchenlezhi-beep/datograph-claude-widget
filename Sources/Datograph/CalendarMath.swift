@@ -65,15 +65,15 @@ enum NextEvent {
     /// How far ahead the menu bar looks for the next event.
     static let horizon: TimeInterval = 12 * 3600
 
-    /// "Standup in 12 min", "Standup in 1 h 40 min", "Standup · now"
+    /// "Standup in 12 min", "Standup in 2 h", "Standup · now". Kept short so it doesn't push other menu bar items
+    /// off the bar: titles are cut to 16 characters, and times an hour or more away show only whole hours.
     static func text(title: String, start: Date, now: Date) -> String {
-        let name = title.count > 24 ? String(title.prefix(23)) + "…" : title
+        let name = title.count > 16 ? String(title.prefix(15)) + "…" : title
         let minutes = Int((start.timeIntervalSince(now) / 60).rounded(.up))
         if minutes <= 0 { return "\(name) · now" }
         if minutes < 60 { return "\(name) in \(minutes) min" }
-        let hours = minutes / 60
-        let rest = minutes % 60
-        return rest == 0 ? "\(name) in \(hours) h" : "\(name) in \(hours) h \(rest) min"
+        // Rounded to the nearest hour, so 1 h 40 min shows as "2 h".
+        return "\(name) in \((minutes + 30) / 60) h"
     }
 }
 

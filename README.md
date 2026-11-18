@@ -11,7 +11,7 @@ Datograph puts the date and time in your menu bar. Click it for a month calendar
 ## Features
 
 - **Menu bar clock**: Shows the date and time in any [date format pattern](https://www.unicode.org/reports/tr35/tr35-dates.html#Date_Field_Symbol_Table), with an optional icon: the date in a calendar, the date with a border, or a clock.
-- **Next event**: A separate menu bar item for the next timed event starting within 12 hours, such as "Standup in 12 min", "Standup in 1 h 40 min" or "Standup · now".
+- **Next event**: A separate menu bar item for the next timed event starting within 12 hours, such as "Standup in 12 min", "Standup in 2 h" or "Standup · now". Times an hour or more away are rounded to the hour, and titles are cut to 16 characters to keep the item short.
 - **Month calendar**: Optional week numbers, highlighted weekends (following your region), a configurable first weekday, and up to three colored dots on days with events.
 - **Upcoming events**: Events from macOS Calendar for the next 1, 3, 7 or 14 days, starting from the day you select. Clicking an event opens [Notion Calendar](https://www.notion.com/product/calendar).
 - **Go to Date**: Type "24 Dec", "next friday" or "2027-01-05" to jump to that date.
